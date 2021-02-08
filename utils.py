@@ -94,6 +94,68 @@ def write_wave_summary(model, model_input, gt, model_output, writer, total_steps
                      global_step=total_steps)
 
 
+def write_HJ_reachability_summary(model, model_input, gt, model_output, writer, total_steps, prefix='train_'):
+
+    sl = 256
+    def scale_percentile(pred, min_perc=1, max_perc=99):
+        min = np.percentile(pred.cpu().numpy(),1)
+        max = np.percentile(pred.cpu().numpy(),99)
+        pred = torch.clamp(pred, min, max)
+        return (pred - min) / (max-min)
+
+    with torch.no_grad():
+        frames = [0.0, 0.25, 0.5, 0.75, 1.0]
+        coords = [dataio.get_mgrid((1, sl, sl, 1), dim=4)[None,...].cuda() for f in frames] # [t, x, y, yaw]
+        #print('coords 1:', coords)
+        for idx, f in enumerate(frames):
+            coords[idx][..., 0] = f
+            coords[idx][..., 3] = 0 # fix yaw
+        #print('coords 2:', coords)
+        coords = torch.cat(coords, dim=0)
+        #print('coords 3:', coords)
+
+        Nslice = 10
+        output = torch.zeros(coords.shape[0], coords.shape[1], 1)
+        split = int(coords.shape[1] / Nslice)
+        for i in range(Nslice):
+            pred = model({'coords':coords[:, i*split:(i+1)*split, :]})['model_out']
+            output[:, i*split:(i+1)*split, :] =  pred.cpu()
+
+    # print('output:', output)
+    #print('pred:', pred)
+    min_max_summary(prefix + 'pred', pred, writer, total_steps)
+    pred = output.view(len(frames), 1, sl, sl)
+
+    plt.switch_backend('agg')
+    fig = plt.figure()
+    plt.subplot(2,2,1)
+    data = pred[0, :, sl//2, :].numpy().squeeze() # why sl//2 ????????
+    # print('data:', data)
+    plt.plot(np.linspace(-1, 1, sl), data)
+    #plt.ylim([-0.01, 0.02])
+
+    plt.subplot(2,2,2)
+    data = pred[1, :, sl//2, :].numpy().squeeze()
+    plt.plot(np.linspace(-1, 1, sl), data)
+    #plt.ylim([-0.01, 0.02])
+
+    plt.subplot(2,2,3)
+    data = pred[2, :, sl//2, :].numpy().squeeze()
+    plt.plot(np.linspace(-1, 1, sl), data)
+    #plt.ylim([-0.01, 0.02])
+
+    plt.subplot(2,2,4)
+    data = pred[3, :, sl//2, :].numpy().squeeze()
+    plt.plot(np.linspace(-1, 1, sl), data)
+    #plt.ylim([-0.01, 0.02])
+
+    writer.add_figure(prefix + 'center_slice', fig, global_step=total_steps)
+
+    #pred = torch.clamp(pred, -0.002, 0.002)
+    writer.add_image(prefix + 'pred_img', make_grid(pred, scale_each=False, normalize=True),
+                     global_step=total_steps)
+                     
+
 def write_helmholtz_summary(model, model_input, gt, model_output, writer, total_steps, prefix='train_'):
     sl = 256
     coords = dataio.get_mgrid(sl)[None,...].cuda()

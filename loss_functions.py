@@ -136,6 +136,55 @@ def wave_pml(model_output, gt):
             'diff_constraint_hom': torch.abs(diff_constraint_hom).sum()}
 
 
+def wave_HJ_reachability(model_output, gt):
+    # Air3D model parameter
+    #beta = 0.25
+    #T = 1 # second
+    ve = 0.75 # m/s
+    vp = 0.75 # m/s
+    omega = 3 # rad/s
+
+    lx = gt['boundary_values']
+    x = model_output['model_in']  # (meta_batch_size, num_points, 3) # (t, x1, x2, x3)
+    y = model_output['model_out']  # (meta_batch_size, num_points, 1)
+    dirichlet_mask = gt['dirichlet_mask']
+    batch_size = x.shape[1]
+
+    gradient, status = diff_operators.jacobian(y, x)
+    Dx1_V = gradient[..., 0, 1]
+    Dx2_V = gradient[..., 0, 2]
+    Dx3_V = gradient[..., 0, 3]
+    Dt_V = gradient[..., 0, 0]
+    H = Dx1_V * (-ve + vp * torch.cos(x[..., 3])) + Dx2_V * (vp * torch.sin(x[..., 3])) \
+        - omega * torch.abs(Dx1_V * x[..., 2] - Dx2_V * x[..., 1] - Dx3_V) + omega * torch.abs(Dx3_V) # or omega * Dx3_V ?
+    # print('gradient.shape', gradient.shape)
+    # print('x[...,1].shape:', x[...,1].shape)
+    # print('x.shape:', x.shape)
+    # print('H.shape:', H.shape)
+    # print('Dt_V.shape:', Dt_V.shape)
+    # print('y.shape:', y.shape)
+    # print('lx.shape:', lx.shape)
+    H_Dt_V = (H + Dt_V).view(y.shape)
+    
+    lx = lx.view(y.shape)
+    h1 = lx - y
+
+    h2_tmp = torch.cat([H_Dt_V, h1], dim = 2)
+    h2 = torch.min(h2_tmp, dim = 2)
+    #print('h2_tmp.shape:', h2_tmp.shape)
+    h2 = torch.abs(h2[0]).view(h1.shape)
+    #print('after h2.shape:', h2.shape)
+
+    dirichlet = y[dirichlet_mask] - lx[dirichlet_mask] 
+
+    # print('batch_size:', batch_size)
+    # print('h1', torch.abs(dirichlet).sum() * batch_size / 1e3)
+    # print('h2', h2.sum())
+
+    return {'dirichlet': torch.abs(dirichlet).sum() * batch_size / 1e3, # CHECK!!!!
+            'diff_constraint_hom': h2.sum()}            
+
+
 def helmholtz_pml(model_output, gt):
     source_boundary_values = gt['source_boundary_values']
 

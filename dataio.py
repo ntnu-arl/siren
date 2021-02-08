@@ -31,6 +31,12 @@ def get_mgrid(sidelen, dim=2):
         pixel_coords[..., 0] = pixel_coords[..., 0] / max(sidelen[0] - 1, 1)
         pixel_coords[..., 1] = pixel_coords[..., 1] / (sidelen[1] - 1)
         pixel_coords[..., 2] = pixel_coords[..., 2] / (sidelen[2] - 1)
+    elif dim == 4:
+        pixel_coords = np.stack(np.mgrid[:sidelen[0], :sidelen[1], :sidelen[2], :sidelen[3]], axis=-1)[None, ...].astype(np.float32)
+        pixel_coords[..., 0] = pixel_coords[..., 0] / max(sidelen[0] - 1, 1)
+        pixel_coords[..., 1] = pixel_coords[..., 1] / (sidelen[1] - 1)
+        pixel_coords[..., 2] = pixel_coords[..., 2] / (sidelen[2] - 1)      
+        pixel_coords[..., 3] = pixel_coords[..., 0] / max(sidelen[3] - 1, 1)  
     else:
         raise NotImplementedError('Not implemented for dim=%d' % dim)
 
@@ -385,6 +391,75 @@ class WaveSource(Dataset):
 
         return {'coords': coords}, {'source_boundary_values': boundary_values, 'dirichlet_mask': dirichlet_mask,
                                     'squared_slowness': squared_slowness, 'squared_slowness_grid': squared_slowness_grid}
+
+
+class HJReachability(Dataset):
+    def __init__(self, sidelength, pretrain=False):
+        super().__init__()
+        torch.manual_seed(0)
+
+        self.pretrain = pretrain
+        self.sidelength = sidelength
+        self.mgrid = get_mgrid(self.sidelength).detach()
+        self.beta = 0.25
+        self.T = 1 # second
+        self.ve = 0.75 # m/s
+        self.vp = 0.75 # m/s
+        self.omega = 3 # rad/s
+
+        self.N_src_samples = 1000
+
+        self.counter = 0
+        self.full_count = 100e3
+
+    def __len__(self):
+        return 1
+
+    def __getitem__(self, idx):
+        start_time = self.T  # time to apply  initial conditions
+
+        # uniformly sample domain and include coordinates where source is non-zero 
+        coords = torch.zeros(self.sidelength ** 3, 3).uniform_(-1, 1)
+
+        if self.pretrain:
+            # only sample in time around the initial condition
+            time = torch.zeros(self.sidelength ** 3, 1).uniform_(start_time - 0.001, start_time + 0.001)
+            coords = torch.cat((time, coords), dim=1)
+            # # make sure we spatially sample the source
+            # coords[-self.N_src_samples:, 1:] = source_coords
+        else:
+            # slowly grow time values from start time
+            # this currently assumes start_time = 0 and max time value is 0.75. 
+            time = torch.zeros(self.sidelength ** 3, 1).uniform_( start_time * (1 - self.counter / self.full_count), start_time)
+            coords = torch.cat((time, coords), dim=1)
+
+            # # make sure we always have training samples at the initial condition
+            # coords[-self.N_src_samples:, 1:] = source_coords
+            # coords[-2 * self.N_src_samples:, 0] = start_time
+
+        # set up boundary_values 
+        boundary_values = torch.norm(coords[:, 1:3], dim=1) - self.beta # lx
+        boundary_values = torch.unsqueeze(boundary_values, 1)
+        # boundary_values /= normalize # CHECK!!!!!!!!
+        #print('before boundary_values.shape:', boundary_values.shape)
+
+        if self.pretrain:
+            dirichlet_mask = torch.ones(coords.shape[0], 1) > 0
+        else:
+            # only enforce initial conditions around start_time
+            boundary_values = torch.where((coords[:, 0, None] == start_time), boundary_values, torch.Tensor([0]))
+            dirichlet_mask = (coords[:, 0, None] == start_time)
+
+        #print('after boundary_values.shape:', boundary_values.shape)
+        # boundary_values[boundary_values < 1e-5] = 0.
+
+        self.counter += 1
+
+        if self.pretrain and self.counter == 10000:
+            self.pretrain = False
+            self.counter = 0
+
+        return {'coords': coords}, {'boundary_values': boundary_values, 'dirichlet_mask': dirichlet_mask}
 
 
 class PointCloud(Dataset):
