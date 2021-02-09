@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import diff_operators
 import modules
 
+import numpy as np
 
 def image_mse(mask, model_output, gt):
     if mask is None:
@@ -155,7 +156,7 @@ def wave_HJ_reachability(model_output, gt):
     Dx2_V = gradient[..., 0, 2]
     Dx3_V = gradient[..., 0, 3]
     Dt_V = gradient[..., 0, 0]
-    H = Dx1_V * (-ve + vp * torch.cos(x[..., 3])) + Dx2_V * (vp * torch.sin(x[..., 3])) \
+    H = Dx1_V * (-ve + vp * torch.cos(x[..., 3] * np.pi)) + Dx2_V * (vp * torch.sin(x[..., 3] * np.pi)) \
         - omega * torch.abs(Dx1_V * x[..., 2] - Dx2_V * x[..., 1] - Dx3_V) + omega * torch.abs(Dx3_V) # or omega * Dx3_V ?
     # print('gradient.shape', gradient.shape)
     # print('x[...,1].shape:', x[...,1].shape)
@@ -177,12 +178,14 @@ def wave_HJ_reachability(model_output, gt):
 
     dirichlet = y[dirichlet_mask] - lx[dirichlet_mask] 
 
-    # print('batch_size:', batch_size)
-    # print('h1', torch.abs(dirichlet).sum() * batch_size / 1e3)
-    # print('h2', h2.sum())
+    print('batch_size:', batch_size)
+    dirichlet_loss = torch.abs(dirichlet).sum() * batch_size / 1e6
+    print('h1', dirichlet_loss)
+    diff_constraint_hom_loss = h2.sum()
+    print('h2', diff_constraint_hom_loss)
 
-    return {'dirichlet': torch.abs(dirichlet).sum() * batch_size / 1e3, # CHECK!!!!
-            'diff_constraint_hom': h2.sum()}            
+    return {'dirichlet': dirichlet_loss, # CHECK!!!!
+            'diff_constraint_hom': diff_constraint_hom_loss}            
 
 
 def helmholtz_pml(model_output, gt):

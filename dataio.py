@@ -407,7 +407,7 @@ class HJReachability(Dataset):
         self.vp = 0.75 # m/s
         self.omega = 3 # rad/s
 
-        self.N_src_samples = 1000
+        self.N_src_samples = 100000
 
         self.counter = 0
         self.full_count = 100e3
@@ -435,7 +435,7 @@ class HJReachability(Dataset):
 
             # # make sure we always have training samples at the initial condition
             # coords[-self.N_src_samples:, 1:] = source_coords
-            # coords[-2 * self.N_src_samples:, 0] = start_time
+            coords[-self.N_src_samples:, 0] = start_time
 
         # set up boundary_values 
         boundary_values = torch.norm(coords[:, 1:3], dim=1) - self.beta # lx

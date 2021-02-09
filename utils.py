@@ -109,7 +109,7 @@ def write_HJ_reachability_summary(model, model_input, gt, model_output, writer, 
         #print('coords 1:', coords)
         for idx, f in enumerate(frames):
             coords[idx][..., 0] = f
-            coords[idx][..., 3] = 0 # fix yaw
+            coords[idx][..., 3] = 0.5 # fix yaw = pi/2
         #print('coords 2:', coords)
         coords = torch.cat(coords, dim=0)
         #print('coords 3:', coords)

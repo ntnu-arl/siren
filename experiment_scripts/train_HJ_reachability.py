@@ -53,8 +53,8 @@ print('opt:', opt)
 # if we have a velocity perturbation, offset the source
 source_coords = [0., 0., 0.]
 
-#dataset = dataio.HJReachability(sidelength=48, pretrain=opt.pretrain)
-dataset = dataio.HJReachability(sidelength=12, pretrain=opt.pretrain) # GTX1050
+dataset = dataio.HJReachability(sidelength=96, pretrain=opt.pretrain)
+#dataset = dataio.HJReachability(sidelength=12, pretrain=opt.pretrain) # GTX1050
 
 dataloader = DataLoader(dataset, shuffle=True, batch_size=opt.batch_size, pin_memory=True, num_workers=0)
 
